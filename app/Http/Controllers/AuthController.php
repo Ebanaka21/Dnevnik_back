@@ -95,12 +95,9 @@ class AuthController extends Controller
 
             $user = User::create([
                 'name' => $name,
-                'username' => $username,
-                'display_name' => $name,
                 'email' => $email,
                 'phone' => $phone,
                 'password' => Hash::make($data['password']),
-                'status' => 'online',
             ]);
 
             Log::info('User registered successfully: ' . $user->email . ' (ID: ' . $user->id . ') from IP: ' . $request->ip());
@@ -145,8 +142,8 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Неверный Email или Пароль'], 401);
             }
 
-            // Проверяем, не заблокирован ли аккаунт
-            if ($user->status === 'blocked') {
+            // Проверяем, не заблокирован ли аккаунт (если поле status существует)
+            if (isset($user->status) && $user->status === 'blocked') {
                 Log::warning('Attempt to login with blocked account: ' . $email . ' from IP: ' . $request->ip());
                 return response()->json(['message' => 'Аккаунт заблокирован'], 403);
             }
@@ -219,26 +216,64 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Пользователь не найден'], 404);
             }
 
-            // Проверяем статус пользователя
-            if ($user->status === 'blocked') {
+            // Проверяем статус пользователя (если поле status существует)
+            if (isset($user->status) && $user->status === 'blocked') {
                 Log::warning('Blocked user tried to access /me: ' . $user->email);
                 return response()->json(['message' => 'Аккаунт заблокирован'], 403);
             }
 
             // Возвращаем только безопасные данные пользователя
-            return response()->json([
+            $responseData = [
                 'id' => $user->id,
                 'name' => htmlspecialchars($user->name, ENT_QUOTES, 'UTF-8'),
-                'username' => htmlspecialchars($user->username, ENT_QUOTES, 'UTF-8'),
-                'display_name' => htmlspecialchars($user->display_name, ENT_QUOTES, 'UTF-8'),
+                'surname' => htmlspecialchars($user->surname ?? '', ENT_QUOTES, 'UTF-8'),
+                'second_name' => htmlspecialchars($user->second_name ?? '', ENT_QUOTES, 'UTF-8'),
+                'birthday' => $user->birthday ? $user->birthday->format('Y-m-d') : null,
                 'email' => $user->email, // Email не экранируем, так как он используется в формах
-                'status' => htmlspecialchars($user->status, ENT_QUOTES, 'UTF-8'),
+                'phone' => $user->phone,
                 'email_verified_at' => $user->email_verified_at,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
-            ], 200);
+            ];
+
+            return response()->json($responseData, 200);
         } catch (\Exception $e) {
             Log::error('Exception on me: ' . $e->getMessage());
+            return response()->json(['message' => 'Ошибка', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = request()->attributes->get('user');
+
+            if (!$user) {
+                return response()->json(['message' => 'Пользователь не найден'], 404);
+            }
+
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'name' => 'sometimes|string|min:2|max:255',
+                'surname' => 'sometimes|string|min:2|max:255',
+                'second_name' => 'sometimes|string|min:2|max:255',
+                'birthday' => 'nullable|date_format:Y-m-d',
+                'phone' => 'sometimes|string|max:20',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['message' => 'Ошибка валидации', 'errors' => $validator->errors()], 422);
+            }
+
+            $data = $validator->validated();
+
+            $user->update($data);
+
+            return response()->json([
+                'message' => 'Профиль обновлен',
+                'user' => $user->fresh(),
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Exception on updateProfile: ' . $e->getMessage());
             return response()->json(['message' => 'Ошибка', 'error' => $e->getMessage()], 500);
         }
     }
@@ -305,8 +340,8 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Пользователь не найден'], 404);
             }
 
-            // Проверяем статус пользователя
-            if ($user->status === 'blocked') {
+            // Проверяем статус пользователя (если поле status существует)
+            if (isset($user->status) && $user->status === 'blocked') {
                 Log::warning('Blocked user tried to refresh token: ' . $user->email);
                 return response()->json(['message' => 'Аккаунт заблокирован'], 403);
             }
@@ -352,7 +387,7 @@ class AuthController extends Controller
                 return [
                     'valid' => true,
                     'user_id' => $user->id,
-                    'username' => $user->username,
+                    'username' => $user->username ?? $user->email,
                     'email' => $user->email,
                     'exp' => $payload->get('exp'),
                 ];

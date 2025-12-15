@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Rooms\Schemas;
 
 use App\Models\Room;
+use App\Models\Amenity;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
@@ -105,22 +106,13 @@ class RoomForm
                             ->bulkToggleable()
                             ->searchable()
                             ->columns(3)
-                            ->options([
-                                'Wi-Fi' => 'Wi-Fi',
-                                'Кондиционер' => 'Кондиционер',
-                                'Телевизор' => 'Телевизор',
-                                'Холодильник' => 'Холодильник',
-                                'Мини-бар' => 'Мини-бар',
-                                'Сейф' => 'Сейф',
-                                'Фен' => 'Фен',
-                                'Душ' => 'Душ',
-                                'Ванна' => 'Ванна',
-                                'Балкон' => 'Балкон',
-                                'Вид на море' => 'Вид на море',
-                                'Кухня' => 'Кухня',
-                                'Чайник' => 'Чайник',
-                            ])
-                            ->helperText('Можно добавить свои через TagsInput, если нужно больше'),
+                            ->options(function () {
+                                return Amenity::active()
+                                    ->ordered()
+                                    ->pluck('name', 'id')
+                                    ->toArray();
+                            })
+                            ->helperText('Управляйте списком удобств в разделе "Преимущества"'),
                     ]),
 
                 Section::make('Фотографии комнаты')

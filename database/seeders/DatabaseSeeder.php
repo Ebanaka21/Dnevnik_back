@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Amenity;
 use App\Models\Hostel;
 use App\Models\Room;
 use App\Models\User;
@@ -12,7 +13,10 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Админ и тестовый гость
+        // 1. Преимущества
+        $this->call(AmenitySeeder::class);
+
+        // 2. Админ и тестовый гость
         User::create([
             'name' => 'Администратор',
             'email' => 'admin@mail.ru',
@@ -25,14 +29,14 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make('password'),
         ]);
 
-        // 2. Один хостел (только те поля, что реально есть!)
+        // 3. Один хостел (только те поля, что реально есть!)
         Hostel::create([
             'name' => 'HostelStay Волгоград',
             'address' => 'ул. М. Балонина, 7, Волгоград',
             'phone' => '+7 (903) 338-41-41',
         ]);
 
-        // 3. Несколько комнат
+        // 4. Несколько комнат
         Room::create([
             'name' => 'Стандартный двухместный',
             'room_number' => '101',

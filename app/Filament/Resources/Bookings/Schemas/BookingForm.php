@@ -18,15 +18,16 @@ class BookingForm
                 Section::make('Гость')
                     ->columns(2)
                     ->schema([
-                        TextInput::make('guest_name')->label('Имя')->required(),
-                        TextInput::make('guest_surname')->label('Фамилия')->required(),
-                        TextInput::make('guest_second_name')->label('Отчество'),
+                        TextInput::make('guest_name')->label('Имя')->required()->maxLength(255),
+                        TextInput::make('guest_surname')->label('Фамилия')->required()->maxLength(255),
+                        TextInput::make('guest_second_name')->label('Отчество')->maxLength(255),
+                        TextInput::make('guest_phone')->label('Телефон')->tel()->required()->maxLength(20),
+                        TextInput::make('guest_email')->label('Email')->email()->maxLength(255),
                         DatePicker::make('guest_birthday')->label('Дата рождения'),
-                        TextInput::make('guest_phone')->label('Телефон')->tel()->required(),
-                        TextInput::make('guest_passport_series')->label('Серия паспорта'),
-                        TextInput::make('guest_passport_number')->label('Номер паспорта'),
-                        DatePicker::make('guest_passport_issued_at')->label('Дата выдачи'),
-                        TextInput::make('guest_passport_issued_by')->label('Кем выдан'),
+                        TextInput::make('guest_passport_series')->label('Серия паспорта')->required()->maxLength(10),
+                        TextInput::make('guest_passport_number')->label('Номер паспорта')->required()->maxLength(10),
+                        DatePicker::make('guest_passport_issued_at')->label('Дата выдачи')->required(),
+                        TextInput::make('guest_passport_issued_by')->label('Кем выдан')->required()->maxLength(255),
                     ]),
 
                 Section::make('Даты и комната')

@@ -21,6 +21,7 @@ class Booking extends Model
         'guest_second_name',
         'guest_birthday',
         'guest_phone',
+        'guest_email',
         'guest_passport_series',
         'guest_passport_number',
         'guest_passport_issued_at',

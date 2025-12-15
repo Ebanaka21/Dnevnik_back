@@ -20,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Set application locale and timezone
+        config(['app.locale' => env('APP_LOCALE', 'ru')]);
+        config(['app.timezone' => env('APP_TIMEZONE', 'Europe/Volgograd')]);
+
         // Register custom JWT middleware alias
         Route::aliasMiddleware('simple.jwt', \App\Http\Middleware\SimpleJwtMiddleware::class);
     }

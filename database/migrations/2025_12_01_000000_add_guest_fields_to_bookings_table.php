@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('guest_second_name')->nullable();
             $table->date('guest_birthday')->nullable();
             $table->string('guest_phone')->nullable();
+            $table->string('guest_email')->nullable();
             $table->string('guest_passport_series')->nullable();
             $table->string('guest_passport_number')->nullable();
             $table->date('guest_passport_issued_at')->nullable();
@@ -36,6 +37,7 @@ return new class extends Migration
                 'guest_second_name',
                 'guest_birthday',
                 'guest_phone',
+                'guest_email',
                 'guest_passport_series',
                 'guest_passport_number',
                 'guest_passport_issued_at',

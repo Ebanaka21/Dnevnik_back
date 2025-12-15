@@ -15,13 +15,49 @@ class UsersTable
     {
         return $table
             ->columns([
-                TextColumn::make('name')->sortable()->searchable(),
-                TextColumn::make('email')->searchable(),
-                TextColumn::make('created_at')->dateTime('d.m.Y H:i'),
+                TextColumn::make('id')
+                    ->label('№')
+                    ->sortable()
+                    ->icon('heroicon-o-hashtag')
+                    ->toggleable(),
+
+                TextColumn::make('name')
+                    ->label('Имя')
+                    ->sortable()
+                    ->searchable()
+                    ->icon('heroicon-o-user'),
+
+                TextColumn::make('email')
+                    ->label('Email')
+                    ->searchable()
+                    ->icon('heroicon-o-envelope'),
+
+                TextColumn::make('created_at')
+                    ->label('Зарегистрирован')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable()
+                    ->icon('heroicon-o-calendar'),
+
+                TextColumn::make('updated_at')
+                    ->label('Обновлен')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->icon('heroicon-o-clock'),
             ])
             ->actions([
-                EditAction::make(),
-                DeleteAction::make(),
-            ]);
+                EditAction::make()
+                    ->icon('heroicon-o-pencil'),
+                DeleteAction::make()
+                    ->icon('heroicon-o-trash'),
+            ])
+            ->bulkActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make()
+                        ->icon('heroicon-o-trash'),
+                ]),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->paginated([10, 25, 50, 100]);
     }
 }

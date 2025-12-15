@@ -27,6 +27,7 @@ Route::post('/refresh', [AuthController::class, 'refresh']);
 Route::get('/rooms', [RoomController::class, 'types']);                    // Все типы с самой низкой ценой
 Route::get('/rooms/available', [RoomController::class, 'available']);     // Поиск по датам: ?check_in=2025-12-10&check_out=2025-12-15
 Route::get('/rooms/{slug}', [RoomController::class, 'show']);             // Детали типа по slug
+Route::get('/rooms/id/{id}', [RoomController::class, 'getById']);        // Детали конкретного номера по ID
 
 // ==================== ЗАЩИЩЁННЫЕ МАРШРУТЫ (требуют JWT) ====================
 
@@ -34,6 +35,7 @@ Route::middleware('simple.jwt')->group(function () {
 
     // Пользователь
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/update-profile', [AuthController::class, 'updateProfile']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Бронирования пользователя
