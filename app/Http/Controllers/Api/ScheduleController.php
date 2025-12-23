@@ -834,6 +834,99 @@ class ScheduleController extends Controller
         }
     }
 
+    // Получить расписание ребенка для родителя
+    public function getChildSchedule($studentId, Request $request)
+    {
+        try {
+            // Проверяем, что пользователь является учеником
+            $student = User::findOrFail($studentId);
+            if ($student->role !== 'student') {
+                return response()->json(['error' => 'Пользователь не является учеником'], 400);
+            }
+
+            // Проверяем, что текущий пользователь является родителем этого ученика
+            $user = $request->attributes->get('user');
+            if (!$student->parentStudents()->where('parent_id', $user->id)->exists()) {
+                return response()->json(['error' => 'Вы не являетесь родителем этого ученика'], 403);
+            }
+
+            // Получаем класс ученика
+            $studentClass = $student->studentClasses()->where('is_active', true)->first();
+            if (!$studentClass) {
+                return response()->json(['error' => 'Ученик не принадлежит ни одному активному классу'], 400);
+            }
+
+            $classId = $studentClass->school_class_id;
+
+            // Получаем расписание класса
+            $query = Schedule::with([
+                'subject:id,name',
+                'teacher:id,name,email'
+            ])->where('school_class_id', $classId)
+              ->where('is_active', true);
+
+            // Фильтрация по дню недели
+            if ($request->has('day_of_week') && !empty($request->day_of_week)) {
+                $query->where('day_of_week', $request->day_of_week);
+            }
+
+            $schedules = $query->orderBy('day_of_week')->orderBy('lesson_number')->get();
+
+            // Группируем по дням недели
+            $grouped = $schedules->groupBy('day_of_week')->map(function($daySchedule) {
+                return $daySchedule->sortBy('lesson_number')->values();
+            });
+
+            $daysOfWeek = [
+                1 => 'Понедельник',
+                2 => 'Вторник',
+                3 => 'Среда',
+                4 => 'Четверг',
+                5 => 'Пятница',
+                6 => 'Суббота',
+                7 => 'Воскресенье'
+            ];
+
+            $result = [];
+            foreach ($daysOfWeek as $dayNumber => $dayName) {
+                $result[$dayName] = $grouped->get($dayNumber, collect());
+            }
+
+            // Статистика
+            $stats = [
+                'total_lessons' => $schedules->count(),
+                'unique_teachers' => $schedules->pluck('teacher_id')->unique()->count(),
+                'unique_subjects' => $schedules->pluck('subject_id')->unique()->count(),
+                'lessons_per_day' => $schedules->groupBy('day_of_week')->map->count(),
+                'by_teacher' => $schedules->groupBy('teacher_id')->map(function($group) {
+                    $teacher = $group->first()->teacher;
+                    return [
+                        'teacher' => $teacher->name,
+                        'lessons_count' => $group->count(),
+                        'subjects' => $group->pluck('subject.name')->unique()->toArray()
+                    ];
+                })->values()
+            ];
+
+            return response()->json([
+                'data' => [
+                    'student' => $student->only(['id', 'name', 'surname', 'second_name', 'full_name']),
+                    'class' => $studentClass->schoolClass->only(['id', 'name', 'academic_year']),
+                    'schedule' => $result,
+                    'statistics' => $stats
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Error in ScheduleController::getChildSchedule", [
+                'student_id' => $studentId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Ошибка при получении расписания ребенка'], 500);
+        }
+    }
+
     // Вспомогательный метод для получения названия дня недели
     private function getDayName($dayOfWeek)
     {

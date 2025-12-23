@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\Schedule;
+use App\Events\AttendanceMarked;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -160,6 +161,9 @@ class AttendanceController extends Controller
 
             // Загружаем связанные данные
             $attendance->load(['student:id,name,email', 'teacher:id,name,email', 'subject:id,name']);
+
+            // Отправляем событие о создании посещаемости
+            event(new AttendanceMarked($attendance));
 
             // Создаем уведомление для родителей при отсутствии
             if ($attendance->status === 'absent') {
@@ -519,6 +523,9 @@ class AttendanceController extends Controller
                     $attendance = Attendance::create($attendanceData);
                     $attendance->load(['student:id,name,email', 'subject:id,name']);
                     $created[] = $attendance;
+
+                    // Отправляем событие о создании посещаемости
+                    event(new AttendanceMarked($attendance));
 
                     // Создаем уведомления при отсутствии
                     if ($attendance->status === 'absent') {
@@ -1231,6 +1238,9 @@ class AttendanceController extends Controller
                     $attendance->load(['student:id,name,email', 'subject:id,name']);
                     $created[] = $attendance;
 
+                    // Отправляем событие о создании посещаемости
+                    event(new AttendanceMarked($attendance));
+
                     // Создаем комментарий в TeacherComments если есть reason/comment
                     if (!empty($data['reason'])) {
                         $reasonText = trim($data['reason']);
@@ -1391,6 +1401,9 @@ class AttendanceController extends Controller
                     $attendance = Attendance::create($attendanceData);
                     $attendance->load(['student:id,name,email', 'subject:id,name']);
                     $created[] = $attendance;
+
+                    // Отправляем событие о создании посещаемости
+                    event(new AttendanceMarked($attendance));
 
                     // Создаем уведомления при отсутствии
                     if ($attendance->status === 'absent') {

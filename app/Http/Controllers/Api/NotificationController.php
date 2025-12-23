@@ -210,6 +210,17 @@ class NotificationController extends Controller
         }
     }
 
+    /**
+     * Получить количество непрочитанных уведомлений (алиас для getUnreadCount)
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function unreadCount(Request $request)
+    {
+        return $this->getUnreadCount($request);
+    }
+
     // Получить последние уведомления
     public function getRecent(Request $request)
     {

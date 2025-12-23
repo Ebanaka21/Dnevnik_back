@@ -35,7 +35,11 @@ class RoleMiddleware
 
         // If role is unknown, try to determine from email and relationships
         if ($userRole === 'unknown') {
-            if (str_contains($user->email, '@school.ru') || $user->email === 'teacher@example.com') {
+            if (str_contains($user->email, '@parent.ru') || $user->email === 'parent@example.com') {
+                $userRole = 'parent';
+            } elseif (str_contains($user->email, '@student.ru') || $user->email === 'student@example.com') {
+                $userRole = 'student';
+            } elseif (str_contains($user->email, '@school.ru') || $user->email === 'teacher@example.com') {
                 // Check if teacher
                 $hasTeacherLinks = \Illuminate\Support\Facades\DB::table('teacher_classes')
                     ->where('teacher_id', $user->id)
@@ -48,10 +52,6 @@ class RoleMiddleware
                     // Default to teacher for @school.ru if no links (for class teachers)
                     $userRole = 'teacher';
                 }
-            } elseif (str_contains($user->email, '@student.ru') || $user->email === 'student@example.com') {
-                $userRole = 'student';
-            } elseif (str_contains($user->email, '@parent.ru') || $user->email === 'parent@example.com') {
-                $userRole = 'parent';
             }
         }
 

@@ -8,6 +8,7 @@ use App\Models\HomeworkSubmission;
 use App\Models\User;
 use App\Models\SchoolClass;
 use App\Models\Subject;
+use App\Events\HomeworkAssigned;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -162,6 +163,9 @@ class HomeworkController extends Controller
 
             // Загружаем связанные данные
             $homework->load(['subject:id,name', 'teacher:id,name,email', 'schoolClass:id,name']);
+
+            // Отправляем событие о создании домашнего задания
+            event(new HomeworkAssigned($homework));
 
             // Создаем submissions для всех учеников класса
             $this->createHomeworkSubmissions($homework);

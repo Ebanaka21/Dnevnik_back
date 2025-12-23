@@ -8,6 +8,7 @@ use App\Models\GradeType;
 use App\Models\Subject;
 use App\Models\User;
 use App\Models\SchoolClass;
+use App\Events\GradeCreated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -147,6 +148,9 @@ class GradeController extends Controller
 
             // Загружаем связанные данные
             $grade->load(['student:id,name,email', 'teacher:id,name,email', 'subject:id,name', 'gradeType:id,name']);
+
+            // Отправляем событие о создании оценки
+            event(new GradeCreated($grade));
 
             // Создаем уведомление для ученика и родителей
             $this->createGradeNotification($grade);
@@ -1022,6 +1026,9 @@ class GradeController extends Controller
                     $grade->load(['student:id,name,email', 'subject:id,name', 'gradeType:id,name']);
                     $created[] = $grade;
 
+                    // Отправляем событие о создании оценки
+                    event(new GradeCreated($grade));
+
                     // Создаем уведомление об оценке
                     $this->createGradeNotification($grade);
 
@@ -1157,6 +1164,9 @@ class GradeController extends Controller
                     $grade = Grade::create($gradeData);
                     $grade->load(['student:id,name,email', 'subject:id,name', 'gradeType:id,name']);
                     $created[] = $grade;
+
+                    // Отправляем событие о создании оценки
+                    event(new GradeCreated($grade));
 
                     // Создаем уведомление об оценке
                     $this->createGradeNotification($grade);

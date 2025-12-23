@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Role;
+use App\Models\ParentStudent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
@@ -83,6 +84,13 @@ class UserManagementController extends Controller
             }
 
             $students = $query->orderBy('name')->get();
+
+            // Добавляем количество родителей для каждого ученика
+            $students->transform(function ($student) {
+                $student->parents_count = ParentStudent::where('student_id', $student->id)->count();
+                return $student;
+            });
+
             Log::info('Students loaded', ['count' => $students->count()]);
 
             return response()->json([
@@ -333,37 +341,75 @@ class UserManagementController extends Controller
     public function linkParentStudent(Request $request)
     {
         try {
+            $user = $request->attributes->get('user');
+            Log::info('Link parent-student request', [
+                'request_data' => $request->all(),
+                'user_id' => $user->id ?? null,
+                'user_role' => $user->role ?? null
+            ]);
+
             $validator = Validator::make($request->all(), [
                 'parent_id' => 'required|exists:users,id',
                 'student_id' => 'required|exists:users,id',
             ]);
 
             if ($validator->fails()) {
+                Log::error('Validation failed', ['errors' => $validator->errors()]);
                 return response()->json(['errors' => $validator->errors()], 422);
             }
 
             $parent = User::findOrFail($request->parent_id);
             $student = User::findOrFail($request->student_id);
 
+            Log::info('Users found', [
+                'parent' => ['id' => $parent->id, 'name' => $parent->name, 'role' => $parent->role],
+                'student' => ['id' => $student->id, 'name' => $student->name, 'role' => $student->role]
+            ]);
+
             // Проверяем роли
             if ($parent->role !== 'parent') {
+                Log::error('Parent role check failed', ['parent_role' => $parent->role]);
                 return response()->json(['error' => 'Пользователь не является родителем'], 400);
             }
 
             if ($student->role !== 'student') {
+                Log::error('Student role check failed', ['student_role' => $student->role]);
                 return response()->json(['error' => 'Пользователь не является учеником'], 400);
             }
 
-            // Проверяем, что связь не существует
-            if ($parent->parentStudents()->where('student_id', $request->student_id)->exists()) {
-                return response()->json(['error' => 'Связь уже существует'], 400);
+            // Проверяем количество уже привязанных родителей
+            $parentsCount = ParentStudent::where('student_id', $request->student_id)->count();
+            Log::info('Parents count check', ['count' => $parentsCount]);
+
+            // Максимум 3 родителя на одного ребенка
+            $maxParents = 3;
+            if ($parentsCount >= $maxParents) {
+                Log::error('Too many parents linked');
+                return response()->json([
+                    'error' => "У ребенка уже привязано максимальное количество родителей ({$maxParents})",
+                    'type' => 'too_many_parents',
+                    'parents_count' => $parentsCount,
+                    'max_parents' => $maxParents
+                ], 422);
             }
 
-            $parent->parentStudents()->create([
+            // Проверяем, что этот родитель не привязан уже
+            $existingLink = $parent->parentStudents()->where('student_id', $request->student_id)->exists();
+            if ($existingLink) {
+                Log::info('Link already exists - returning friendly message');
+                return response()->json([
+                    'error' => 'Этот ребенок уже привязан к вашему аккаунту',
+                    'type' => 'already_linked',
+                    'parents_count' => $parentsCount
+                ], 200);
+            }
+
+            $link = $parent->parentStudents()->create([
                 'student_id' => $request->student_id
             ]);
 
-            Log::info('Parent-student link created', [
+            Log::info('Parent-student link created successfully', [
+                'link_id' => $link->id,
                 'parent_id' => $request->parent_id,
                 'student_id' => $request->student_id
             ]);
@@ -372,7 +418,9 @@ class UserManagementController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error linking parent-student', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
             ]);
 
             return response()->json(['error' => 'Ошибка при создании связи'], 500);
@@ -408,6 +456,32 @@ class UserManagementController extends Controller
             ]);
 
             return response()->json(['error' => 'Ошибка при удалении связи'], 500);
+        }
+    }
+
+    // Получить детей текущего родителя
+    public function getMyChildren(Request $request)
+    {
+        try {
+            $user = $request->attributes->get('user');
+
+            if (!$user || !in_array($user->role, ['parent', 'admin'])) {
+                return response()->json(['error' => 'Доступ запрещен'], 403);
+            }
+
+            $children = $user->parentStudents()->with('student:id,name,email')->get();
+
+            return response()->json([
+                'data' => $children
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error getting my children', [
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Ошибка при получении детей'], 500);
         }
     }
 

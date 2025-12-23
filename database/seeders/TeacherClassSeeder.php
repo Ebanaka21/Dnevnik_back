@@ -190,15 +190,12 @@ class TeacherClassSeeder extends Seeder
 
                     if ($teacher) {
                         // Создаем запись расписания
-                        $existingSchedule = \App\Models\Schedule::where('school_class_id', $class->id)
-                            ->where('subject_id', $subject->id)
-                            ->where('teacher_id', $teacher->id)
-                            ->where('day_of_week', $dayOfWeek)
-                            ->where('lesson_number', $periodNumber)
-                            ->where('academic_year', '2024-2025')
-                            ->first();
+                         $existingSchedule = \App\Models\Schedule::where('school_class_id', $class->id)
+                             ->where('day_of_week', $dayOfWeek)
+                             ->where('lesson_number', $periodNumber)
+                             ->first();
 
-                        if (!$existingSchedule) {
+                         if (!$existingSchedule) {
                             \App\Models\Schedule::create([
                                 'school_class_id' => $class->id,
                                 'subject_id' => $subject->id,

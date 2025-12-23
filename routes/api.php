@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\TeacherCommentController;
 use App\Http\Controllers\Api\CurriculumPlanController;
 use App\Http\Controllers\Api\TeacherController;
+use App\Http\Controllers\Api\ParentController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 
@@ -68,23 +69,26 @@ Route::middleware('simple.jwt')->group(function () {
 
     // ==================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ====================
     Route::prefix('users')->group(function () {
-        // Ученики - доступны админам и учителям (ПЕРЕД админской группой!)
-        Route::get('/students', [UserManagementController::class, 'students'])->middleware('role:admin,teacher');
+        // Ученики - доступны админам, учителям и родителям (ПЕРЕД админской группой!)
+        Route::get('/students', [UserManagementController::class, 'students'])->middleware('role:admin,teacher,parent');
 
         // Админские методы
         Route::middleware('role:admin')->group(function () {
             Route::get('/', [UserManagementController::class, 'index']);
             Route::get('/teachers', [UserManagementController::class, 'teachers']);
-            Route::get('/parents', [UserManagementController::class, 'parents']);
             Route::post('/', [UserManagementController::class, 'store']);
             Route::get('/{user}', [UserManagementController::class, 'show']);
             Route::put('/{user}', [UserManagementController::class, 'update']);
             Route::delete('/{user}', [UserManagementController::class, 'destroy']);
         });
 
+        // Родители могут получать информацию о себе
+        Route::get('/parents', [UserManagementController::class, 'parents'])->middleware('role:admin,parent');
+
         // Методы для связи родителей и учеников - доступны админам и родителям
         Route::post('/link-parent-student', [UserManagementController::class, 'linkParentStudent'])->middleware('role:admin,parent');
         Route::post('/unlink-parent-student', [UserManagementController::class, 'unlinkParentStudent'])->middleware('role:admin,parent');
+        Route::get('/my-children', [UserManagementController::class, 'getMyChildren'])->middleware('role:parent');
 
         // Методы для связи учеников и классов - только админы
         Route::post('/link-student-class', [UserManagementController::class, 'linkStudentClass'])->middleware('role:admin');
@@ -322,38 +326,34 @@ Route::middleware('simple.jwt')->group(function () {
     Route::prefix('notifications')->group(function () {
         // Получение уведомлений пользователя
         Route::get('/', [NotificationController::class, 'index'])->middleware('role:admin,teacher,student,parent');
-        Route::get('/', [NotificationController::class, 'getNotifications'])->middleware('role:admin,teacher,student,parent');
 
         // Получение непрочитанных уведомлений
         Route::get('/unread', [NotificationController::class, 'unread'])->middleware('role:admin,teacher,student,parent');
 
-        // Отметка как прочитанное
-        Route::put('/{id}/read', [NotificationController::class, 'markAsRead'])->middleware('role:admin,teacher,student,parent');
+        // Получение количества непрочитанных (два варианта URL)
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount'])->middleware('role:admin,teacher,student,parent');
 
-        // Отметка всех как прочитанных
-        Route::put('/mark-all-read', [NotificationController::class, 'markAllAsRead'])->middleware('role:admin,teacher,student,parent');
-        Route::put('/read-all', [NotificationController::class, 'markAllAsRead'])->middleware('role:admin,teacher,student,parent');
+        // Получение последних уведомлений
+        Route::get('/recent', [NotificationController::class, 'getRecent'])->middleware('role:admin,teacher,student,parent');
+
+        // Отметка как прочитанное
+        Route::post('/{id}/read', [NotificationController::class, 'markAsRead'])->middleware('role:admin,teacher,student,parent');
+
+        // Отметка всех как прочитанных (два варианта URL)
+        Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->middleware('role:admin,teacher,student,parent');
+        Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead'])->middleware('role:admin,teacher,student,parent');
+
+        // Удаление уведомления
+        Route::delete('/{id}', [NotificationController::class, 'destroy'])->middleware('role:admin,teacher,student,parent');
 
         // Создание уведомлений - только для админов и учителей
         Route::post('/', [NotificationController::class, 'store'])->middleware('role:admin,teacher');
-        Route::post('/grade', [NotificationController::class, 'createGradeNotification'])->middleware('role:admin,teacher');
-        Route::post('/attendance', [NotificationController::class, 'createAttendanceNotification'])->middleware('role:admin,teacher');
-        Route::post('/homework', [NotificationController::class, 'createHomeworkNotification'])->middleware('role:admin,teacher');
 
         // Массовая отправка уведомлений
         Route::post('/bulk', [NotificationController::class, 'sendBulk'])->middleware('role:admin,teacher');
 
         // Отправка уведомлений классу
         Route::post('/class', [NotificationController::class, 'sendToClass'])->middleware('role:admin,teacher');
-
-        // Удаление уведомления
-        Route::delete('/{id}', [NotificationController::class, 'destroy'])->middleware('role:admin,teacher,student,parent');
-
-        // Получение количества непрочитанных
-        Route::get('/unread-count', [NotificationController::class, 'getUnreadCount'])->middleware('role:admin,teacher,student,parent');
-
-        // Получение последних уведомлений
-        Route::get('/recent', [NotificationController::class, 'getRecent'])->middleware('role:admin,teacher,student,parent');
 
         // Очистка старых уведомлений
         Route::post('/cleanup', [NotificationController::class, 'cleanup'])->middleware('role:admin');
@@ -417,6 +417,23 @@ Route::middleware('simple.jwt')->group(function () {
         Route::prefix('export')->group(function () {
             Route::post('/pdf', [ReportController::class, 'exportToPDF'])->middleware('role:admin,teacher');
             Route::post('/excel', [ReportController::class, 'exportToExcel'])->middleware('role:admin,teacher');
+        });
+    });
+
+    // ==================== РОДИТЕЛИ ====================
+    Route::middleware(['auth:api', 'role:parent'])->prefix('parent')->group(function () {
+        // Список детей
+        Route::get('/students', [ParentController::class, 'getStudents']);
+
+        // Данные конкретного ребенка (с проверкой доступа)
+        Route::middleware('verify.parent.access')->group(function () {
+            Route::get('/students/{studentId}/grades', [ParentController::class, 'getStudentGrades']);
+            Route::get('/students/{studentId}/attendance', [ParentController::class, 'getStudentAttendance']);
+            Route::get('/students/{studentId}/homework', [ParentController::class, 'getStudentHomework']);
+            Route::get('/students/{studentId}/schedule', [ParentController::class, 'getStudentSchedule']);
+            Route::get('/students/{studentId}/dashboard', [ParentController::class, 'getStudentDashboard']);
+            Route::get('/students/{studentId}/notification-settings', [ParentController::class, 'getNotificationSettings']);
+            Route::put('/students/{studentId}/notification-settings', [ParentController::class, 'updateNotificationSettings']);
         });
     });
 });

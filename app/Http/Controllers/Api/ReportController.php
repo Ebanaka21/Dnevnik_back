@@ -279,6 +279,276 @@ class ReportController extends Controller
         }
     }
 
+    // Отчет по оценкам ребенка для родителя
+    public function getChildGradesReport($childId, Request $request)
+    {
+        try {
+            $child = User::findOrFail($childId);
+
+            if ($child->role !== 'student') {
+                return response()->json(['error' => 'Пользователь не является учеником'], 400);
+            }
+
+            // Проверка прав доступа: ребенок должен принадлежать родителю
+            $parent = auth()->user();
+            if (!$parent->children()->where('id', $childId)->exists()) {
+                return response()->json(['error' => 'У вас нет доступа к этому ребенку'], 403);
+            }
+
+            // Параметры отчета
+            $dateFrom = $request->get('date_from', Carbon::now()->startOfYear()->toDateString());
+            $dateTo = $request->get('date_to', Carbon::now()->endOfYear()->toDateString());
+            $subjectId = $request->get('subject_id');
+            $includeHomework = $request->get('include_homework', true);
+
+            // Получаем оценки
+            $gradesQuery = Grade::with(['subject:id,name', 'teacher:id,name,email', 'gradeType:id,name'])
+                ->where('student_id', $childId)
+                ->whereBetween('date', [$dateFrom, $dateTo]);
+
+            if ($subjectId) {
+                $gradesQuery->where('subject_id', $subjectId);
+            }
+
+            $grades = $gradesQuery->orderBy('date', 'desc')->get();
+
+            // Статистика по оценкам
+            $gradeStats = [
+                'total_grades' => $grades->count(),
+                'average_grade' => round($grades->avg('grade_value'), 2),
+                'grade_distribution' => $grades->groupBy('grade_value')->map->count(),
+                'by_subject' => [],
+                'by_grade_type' => [],
+                'monthly_progress' => []
+            ];
+
+            // Статистика по предметам
+            foreach ($grades->groupBy('subject_id') as $subjectId => $subjectGrades) {
+                $subject = $subjectGrades->first()->subject;
+                $gradeStats['by_subject'][] = [
+                    'subject' => $subject->name,
+                    'total_grades' => $subjectGrades->count(),
+                    'average_grade' => round($subjectGrades->avg('grade_value'), 2),
+                    'grades' => $subjectGrades->groupBy('grade_value')->map->count()
+                ];
+            }
+
+            // Статистика по типам оценок
+            foreach ($grades->groupBy('grade_type_id') as $typeId => $typeGrades) {
+                $gradeType = $typeGrades->first()->gradeType;
+                $gradeStats['by_grade_type'][] = [
+                    'type' => $gradeType->name,
+                    'total_grades' => $typeGrades->count(),
+                    'average_grade' => round($typeGrades->avg('grade_value'), 2)
+                ];
+            }
+
+            // Месячный прогресс
+            $monthlyData = $grades->groupBy(function($grade) {
+                return Carbon::parse($grade->date)->format('Y-m');
+            })->map(function($monthGrades) {
+                return round($monthGrades->avg('grade_value'), 2);
+            });
+
+            foreach ($monthlyData as $month => $avg) {
+                $gradeStats['monthly_progress'][] = [
+                    'month' => $month,
+                    'average_grade' => $avg
+                ];
+            }
+
+            // Домашние задания (если включено)
+            $homeworkData = null;
+            if ($includeHomework) {
+                $studentClasses = $child->studentClasses()->pluck('school_class_id');
+
+                $homeworkQuery = Homework::whereIn('school_class_id', $studentClasses)
+                    ->whereBetween('created_at', [$dateFrom, $dateTo]);
+
+                if ($subjectId) {
+                    $homeworkQuery->where('subject_id', $subjectId);
+                }
+
+                $homeworks = $homeworkQuery->get();
+
+                $submissions = HomeworkSubmission::where('student_id', $childId)
+                    ->whereIn('homework_id', $homeworks->pluck('id'))
+                    ->get()
+                    ->keyBy('homework_id');
+
+                $homeworkStats = [
+                    'total_homeworks' => $homeworks->count(),
+                    'submitted' => $submissions->count(),
+                    'pending' => $homeworks->count() - $submissions->count(),
+                    'completion_rate' => $homeworks->count() > 0
+                        ? round(($submissions->count() / $homeworks->count()) * 100, 2)
+                        : 0,
+                    'average_score' => $submissions->whereNotNull('earned_points')->avg('earned_points')
+                ];
+
+                $homeworkData = [
+                    'statistics' => $homeworkStats,
+                    'homeworks' => $homeworks->map(function($homework) use ($submissions) {
+                        return [
+                            'id' => $homework->id,
+                            'title' => $homework->title,
+                            'subject' => $homework->subject->name,
+                            'due_date' => $homework->due_date,
+                            'max_points' => $homework->max_points,
+                            'is_submitted' => $submissions->has($homework->id),
+                            'submission' => $submissions->get($homework),
+                            'is_overdue' => !$submissions->has($homework->id) && $homework->due_date < now()->toDateString()
+                        ];
+                    })
+                ];
+            }
+
+            Log::info('Child grades report generated', [
+                'parent_id' => $parent->id,
+                'child_id' => $childId,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'total_grades' => $grades->count()
+            ]);
+
+            return response()->json([
+                'child' => $child->only(['id', 'name', 'email']),
+                'period' => [
+                    'from' => $dateFrom,
+                    'to' => $dateTo
+                ],
+                'grades' => $grades,
+                'statistics' => $gradeStats,
+                'homework' => $homeworkData
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Error in ReportController::getChildGradesReport", [
+                'child_id' => $childId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Ошибка при генерации отчета по оценкам ребенка'], 500);
+        }
+    }
+
+    // Отчет по посещаемости ребенка для родителя
+    public function getChildAttendanceReport($childId, Request $request)
+    {
+        try {
+            $child = User::findOrFail($childId);
+
+            if ($child->role !== 'student') {
+                return response()->json(['error' => 'Пользователь не является учеником'], 400);
+            }
+
+            // Проверка прав доступа: ребенок должен принадлежать родителю
+            $parent = auth()->user();
+            if (!$parent->children()->where('id', $childId)->exists()) {
+                return response()->json(['error' => 'У вас нет доступа к этому ребенку'], 403);
+            }
+
+            // Параметры отчета
+            $dateFrom = $request->get('date_from', Carbon::now()->startOfYear()->toDateString());
+            $dateTo = $request->get('date_to', Carbon::now()->endOfYear()->toDateString());
+            $subjectId = $request->get('subject_id');
+
+            // Получаем посещаемость
+            $attendanceQuery = Attendance::with(['lesson.subject:id,name', 'teacher:id,name,email'])
+                ->where('student_id', $childId)
+                ->whereBetween('date', [$dateFrom, $dateTo]);
+
+            if ($subjectId) {
+                $attendanceQuery->where('subject_id', $subjectId);
+            }
+
+            $attendance = $attendanceQuery->orderBy('date', 'desc')->get();
+
+            // Статистика посещаемости
+            $stats = [
+                'total_lessons' => $attendance->count(),
+                'present' => $attendance->where('status', 'present')->count(),
+                'absent' => $attendance->where('status', 'absent')->count(),
+                'late' => $attendance->where('status', 'late')->count(),
+                'excused' => $attendance->where('status', 'excused')->count(),
+                'attendance_percentage' => $attendance->count() > 0
+                    ? round(($attendance->where('status', 'present')->count() / $attendance->count()) * 100, 2)
+                    : 0,
+                'by_subject' => [],
+                'by_month' => [],
+                'absence_reasons' => []
+            ];
+
+            // Статистика по предметам
+            foreach ($attendance->groupBy('lesson.subject_id') as $subjectId => $subjectAttendance) {
+                $subject = $subjectAttendance->first()->lesson->subject;
+                $total = $subjectAttendance->count();
+                $present = $subjectAttendance->where('status', 'present')->count();
+
+                $stats['by_subject'][] = [
+                    'subject' => $subject->name,
+                    'total_lessons' => $total,
+                    'present' => $present,
+                    'absent' => $subjectAttendance->where('status', 'absent')->count(),
+                    'late' => $subjectAttendance->where('status', 'late')->count(),
+                    'attendance_percentage' => $total > 0 ? round(($present / $total) * 100, 2) : 0
+                ];
+            }
+
+            // Месячная статистика
+            $monthlyData = $attendance->groupBy(function($record) {
+                return Carbon::parse($record->date)->format('Y-m');
+            })->map(function($monthRecords) {
+                $total = $monthRecords->count();
+                $present = $monthRecords->where('status', 'present')->count();
+                return [
+                    'total_lessons' => $total,
+                    'present' => $present,
+                    'attendance_percentage' => $total > 0 ? round(($present / $total) * 100, 2) : 0
+                ];
+            });
+
+            foreach ($monthlyData as $month => $data) {
+                $stats['by_month'][] = array_merge(['month' => $month], $data);
+            }
+
+            // Причины отсутствий
+            $absenceReasons = $attendance->where('status', 'absent')->pluck('reason')->filter()->countBy();
+            foreach ($absenceReasons as $reason => $count) {
+                $stats['absence_reasons'][] = [
+                    'reason' => $reason,
+                    'count' => $count
+                ];
+            }
+
+            Log::info('Child attendance report generated', [
+                'parent_id' => $parent->id,
+                'child_id' => $childId,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'total_lessons' => $attendance->count()
+            ]);
+
+            return response()->json([
+                'child' => $child->only(['id', 'name', 'email']),
+                'period' => [
+                    'from' => $dateFrom,
+                    'to' => $dateTo
+                ],
+                'attendance' => $attendance,
+                'statistics' => $stats
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Error in ReportController::getChildAttendanceReport", [
+                'child_id' => $childId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Ошибка при генерации отчета по посещаемости ребенка'], 500);
+        }
+    }
+
     // НОВЫЕ МЕТОДЫ ДЛЯ PERFORMANCE REPORT
 
     /**

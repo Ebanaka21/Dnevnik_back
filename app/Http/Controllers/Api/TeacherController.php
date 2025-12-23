@@ -298,14 +298,16 @@ class TeacherController extends Controller
             $teacher = $this->getAuthenticatedTeacher($request);
             $limit = $request->input('limit', 5);
 
-            Log::info('Teacher ID: ' . $teacher->id . ', Email: ' . $teacher->email);
-
             $grades = Grade::where('teacher_id', $teacher->id)
+                ->with([
+                    'student:id,name,surname,second_name',
+                    'subject:id,name',
+                    'gradeType:id,name'
+                ])
+                ->latest()
                 ->latest()
                 ->take($limit)
                 ->get();
-
-            Log::info('Grades count for teacher: ' . $grades->count());
 
             // Форматируем данные для фронтенда
             $formattedGrades = $grades->map(function ($grade) {
@@ -313,24 +315,35 @@ class TeacherController extends Controller
                 $subject = $grade->subject;
                 $gradeType = $grade->gradeType;
 
+                // Получаем класс ученика через отдельный запрос
+                $studentClass = DB::table('student_classes')
+                    ->join('school_classes', 'student_classes.school_class_id', '=', 'school_classes.id')
+                    ->where('student_classes.student_id', $grade->student_id)
+                    ->where('student_classes.is_active', true)
+                    ->select('school_classes.name')
+                    ->first();
+
+                $className = $studentClass ? $studentClass->name : 'Неизвестный класс';
+
                 return [
                     'id' => $grade->id,
                     'student_id' => $grade->student_id,
                     'student_name' => $student ? $student->getFullNameAttribute() : 'Неизвестный ученик',
-                    'class_name' => '10А', // Пока хардкодим, можно получить из studentClasses
+                    'class_name' => $className,
                     'subject_name' => $subject ? $subject->name : 'Неизвестный предмет',
                     'grade_value' => $grade->value,
                     'date' => $grade->date,
                     'grade_type_name' => $gradeType ? $gradeType->name : 'Обычная',
-                    'is_class_teacher_student' => true, // Пока true
+                    'is_class_teacher_student' => true,
                 ];
             });
 
-            Log::info('Formatted grades count: ' . $formattedGrades->count());
-
             return response()->json($formattedGrades);
         } catch (\Exception $e) {
-            Log::error('Error in TeacherController::getRecentGrades', ['error' => $e->getMessage()]);
+            Log::error('Error in TeacherController::getRecentGrades', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json(['error' => 'Failed to retrieve recent grades.'], 500);
         }
     }
@@ -397,8 +410,20 @@ class TeacherController extends Controller
 
             $grades = $query->orderBy($sortBy, $sortOrder)->paginate(50);
 
+            // Получаем типы оценок отдельно для надежности
+            $gradeItems = $grades->items();
+            $gradeTypeIds = collect($gradeItems)->pluck('grade_type_id')->filter()->unique();
+            $gradeTypes = \App\Models\GradeType::whereIn('id', $gradeTypeIds)->pluck('name', 'id');
+
+            // Добавляем grade_type_name к каждой оценке
+            $formattedGrades = collect($gradeItems)->map(function ($grade) use ($gradeTypes) {
+                $gradeArray = $grade->toArray();
+                $gradeArray['grade_type_name'] = $gradeTypes->get($grade->grade_type_id, 'Неизвестный тип');
+                return $gradeArray;
+            });
+
             return response()->json([
-                'data' => $grades->items(),
+                'data' => $formattedGrades,
                 'pagination' => [
                     'current_page' => $grades->currentPage(),
                     'last_page' => $grades->lastPage(),

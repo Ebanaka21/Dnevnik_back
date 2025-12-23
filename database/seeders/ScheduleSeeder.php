@@ -24,6 +24,9 @@ class ScheduleSeeder extends Seeder
     {
         $this->command->info('Начинаем создание расписания уроков...');
 
+        // Очищаем таблицу расписания перед созданием нового
+        Schedule::truncate();
+
         // Получаем все связи учитель-класс-предмет, группируем по классу
         $teacherClassesGrouped = DB::table('teacher_classes')
             ->where('academic_year', '2024-2025')

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SimpleJwtMiddleware;
 use App\Http\Middleware\RateLimitMiddleware;
+use App\Http\Middleware\VerifyParentAccess;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'simple.jwt' => SimpleJwtMiddleware::class,
             'rate.limit' => RateLimitMiddleware::class,
+            'verify.parent.access' => VerifyParentAccess::class,
         ]);
 
         // Настройка для API маршрутов

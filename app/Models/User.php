@@ -136,6 +136,16 @@ class User extends Authenticatable implements JWTSubject
         );
     }
 
+    public function parents()
+    {
+        return $this->belongsToMany(
+            User::class,
+            'parent_students',
+            'student_id',
+            'parent_id'
+        )->withPivot(['relationship', 'is_primary'])->withTimestamps();
+    }
+
     public function grades()
     {
         return $this->hasMany(Grade::class, 'student_id');
@@ -205,13 +215,6 @@ class User extends Authenticatable implements JWTSubject
                     ->withTimestamps();
     }
 
-    public function parentClasses()
-    {
-        return $this->belongsToMany(SchoolClass::class, 'parent_students', 'parent_id', 'school_class_id')
-                    ->withPivot('academic_year', 'is_active')
-                    ->withTimestamps();
-    }
-
     public function schoolClasses()
     {
         return $this->belongsToMany(SchoolClass::class, 'student_classes', 'student_id', 'school_class_id')
@@ -238,6 +241,72 @@ class User extends Authenticatable implements JWTSubject
         return !empty($this->passport_series) &&
                !empty($this->passport_number) &&
                !empty($this->passport_issued_at);
+    }
+
+    /**
+     * Проверить, является ли пользователь родителем
+     *
+     * @return bool
+     */
+    public function isParent(): bool
+    {
+        return $this->role === 'parent';
+    }
+
+    /**
+     * Проверить, является ли пользователь учеником
+     *
+     * @return bool
+     */
+    public function isStudent(): bool
+    {
+        return $this->role === 'student';
+    }
+
+    /**
+     * Проверить, является ли пользователь учителем
+     *
+     * @return bool
+     */
+    public function isTeacher(): bool
+    {
+        return $this->role === 'teacher';
+    }
+
+    /**
+     * Проверить, является ли пользователь администратором
+     *
+     * @return bool
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /**
+     * Проверить, имеет ли родитель доступ к данным ученика
+     *
+     * @param int $studentId
+     * @return bool
+     */
+    public function hasAccessToStudent(int $studentId): bool
+    {
+        if (!$this->isParent()) {
+            return false;
+        }
+
+        return $this->children()->where('student_id', $studentId)->exists();
+    }
+
+    /**
+     * Проверить, является ли пользователь родителем конкретного ученика
+     *
+     * @param int $studentId
+     * @return bool
+     */
+    public function isParentOf(int $studentId): bool
+    {
+        return $this->hasAccessToStudent($studentId);
     }
 
     /**
