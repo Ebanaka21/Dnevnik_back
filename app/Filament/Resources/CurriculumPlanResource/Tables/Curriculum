@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Filament\Resources\CurriculumPlanResource\Tables;
+
+use App\Models\CurriculumPlan;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+
+class CurriculumPlansTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                TextColumn::make('schoolClass.name')->label('Класс')->sortable()->searchable(),
+                TextColumn::make('subject.name')->label('Предмет')->sortable()->searchable(),
+                TextColumn::make('academic_year')->label('Академический год')->sortable()->searchable(),
+                TextColumn::make('hours_per_week')->label('Часов в неделю')->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('school_class_id')->label('Класс')->relationship('schoolClass', 'name'),
+                SelectFilter::make('subject_id')->label('Предмет')->relationship('subject', 'name'),
+            ])
+            ->actions([
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
+            ->bulkActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
+    }
+}

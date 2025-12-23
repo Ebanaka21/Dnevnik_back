@@ -18,54 +18,76 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         try {
+            Log::info('=== AttendanceController::index START ===', [
+                'all_params' => $request->all(),
+                'teacher_id_param' => $request->input('teacher_id'),
+                'has_teacher_id' => $request->has('teacher_id'),
+            ]);
+
             $query = Attendance::with([
                 'student:id,name,email',
                 'teacher:id,name,email',
                 'subject:id,name'
             ]);
 
+            Log::info('Before filters - Total attendance records:', ['count' => Attendance::count()]);
+
             // Фильтрация по ученику
             if ($request->has('student_id') && !empty($request->student_id)) {
+                Log::info('Filtering by student_id:', ['student_id' => $request->student_id]);
                 $query->where('student_id', $request->student_id);
             }
 
             // Фильтрация по учителю
             if ($request->has('teacher_id') && !empty($request->teacher_id)) {
+                Log::info('Filtering by teacher_id:', ['teacher_id' => $request->teacher_id]);
                 $query->where('teacher_id', $request->teacher_id);
             }
 
             // Фильтрация по предмету
             if ($request->has('subject_id') && !empty($request->subject_id)) {
+                Log::info('Filtering by subject_id:', ['subject_id' => $request->subject_id]);
                 $query->where('subject_id', $request->subject_id);
             }
 
             // Фильтрация по статусу
             if ($request->has('status') && !empty($request->status)) {
+                Log::info('Filtering by status:', ['status' => $request->status]);
                 $query->where('status', $request->status);
             }
 
             // Фильтрация по датам
             if ($request->has('date_from') && !empty($request->date_from)) {
+                Log::info('Filtering by date_from:', ['date_from' => $request->date_from]);
                 $query->whereDate('date', '>=', $request->date_from);
             }
 
             if ($request->has('date_to') && !empty($request->date_to)) {
+                Log::info('Filtering by date_to:', ['date_to' => $request->date_to]);
                 $query->whereDate('date', '<=', $request->date_to);
             }
 
             // Фильтрация по классу
-            if ($request->has('school_class_id') && !empty($request->class_id)) {
+            if ($request->has('school_class_id') && !empty($request->school_class_id)) {
+                Log::info('Filtering by school_class_id:', ['school_class_id' => $request->school_class_id]);
                 $query->whereHas('student.studentClasses', function($q) use ($request) {
-                    $q->where('school_class_id', $request->class_id);
+                    $q->where('school_class_id', $request->school_class_id);
                 });
             }
 
             // Сортировка
             $sortBy = $request->get('sort_by', 'date');
             $sortOrder = $request->get('sort_order', 'desc');
+            Log::info('Sorting:', ['sort_by' => $sortBy, 'sort_order' => $sortOrder]);
             $query->orderBy($sortBy, $sortOrder);
 
             $attendances = $query->paginate(20);
+
+            Log::info('=== AttendanceController::index END ===', [
+                'count' => $attendances->count(),
+                'total' => $attendances->total(),
+                'data_sample' => $attendances->items()
+            ]);
 
             return response()->json([
                 'data' => $attendances->items(),
@@ -215,7 +237,7 @@ class AttendanceController extends Controller
                 'attendance_percentage' => $attendances->count() > 0
                     ? round(($attendances->where('status', 'present')->count() / $attendances->count()) * 100, 2)
                     : 0,
-                'by_subject' => $attendances->groupBy('subject.name')->map(function($group) {
+                'by_subject' => $attendances->groupBy('subject_id')->map(function($group) {
                     $total = $group->count();
                     $present = $group->where('status', 'present')->count();
                     return [
@@ -551,7 +573,7 @@ class AttendanceController extends Controller
                 'absent' => $attendances->where('status', 'absent')->count(),
                 'late' => $attendances->where('status', 'late')->count(),
                 'excused' => $attendances->where('status', 'excused')->count(),
-                'by_subject' => $attendances->groupBy('subject.name')->map(function($group) {
+                'by_subject' => $attendances->groupBy('subject_id')->map(function($group) {
                     $total = $group->count();
                     $present = $group->where('status', 'present')->count();
                     return [
@@ -766,7 +788,7 @@ class AttendanceController extends Controller
                 'attendance_percentage' => $attendances->count() > 0
                     ? round(($attendances->where('status', 'present')->count() / $attendances->count()) * 100, 2)
                     : 0,
-                'by_subject' => $attendances->groupBy('subject.name')->map(function($group) {
+                'by_subject' => $attendances->groupBy('subject_id')->map(function($group) {
                     $total = $group->count();
                     $present = $group->where('status', 'present')->count();
                     return [
@@ -1061,11 +1083,12 @@ class AttendanceController extends Controller
     public function saveByLesson(Request $request)
     {
         try {
-            Log::info('saveByLesson: Request received', [
+            Log::info('saveByLesson: START - Request received', [
                 'lesson_number' => $request->input('lesson_number'),
                 'date' => $request->input('date'),
                 'school_class_id' => $request->input('school_class_id'),
                 'attendance_data_count' => count($request->input('attendance_data', [])),
+                'all_request_data' => $request->all()
             ]);
 
             $validator = Validator::make($request->all(), [
@@ -1161,6 +1184,11 @@ class AttendanceController extends Controller
 
             foreach ($request->attendance_data as $data) {
                 try {
+                    Log::info('Processing attendance for student', [
+                        'student_id' => $data['student_id'],
+                        'status' => $data['status']
+                    ]);
+
                     // Проверяем дубликаты
                     $existing = Attendance::where('student_id', $data['student_id'])
                         ->where('subject_id', $subjectId)
@@ -1171,6 +1199,10 @@ class AttendanceController extends Controller
                     if ($existing) {
                         $student = User::findOrFail($data['student_id']);
                         $errors[] = "Запись для ученика {$student->name} уже существует";
+                        Log::warning('Duplicate attendance record found', [
+                            'student_id' => $data['student_id'],
+                            'existing_id' => $existing->id
+                        ]);
                         continue;
                     }
 
@@ -1181,7 +1213,21 @@ class AttendanceController extends Controller
                         'lesson_number' => $request->lesson_number
                     ]);
 
+                    Log::info('About to create attendance record', [
+                        'attendance_data' => $attendanceData,
+                        'teacher_id' => $teacherId
+                    ]);
+
                     $attendance = Attendance::create($attendanceData);
+
+                    Log::info('Attendance record created successfully', [
+                        'attendance_id' => $attendance->id,
+                        'student_id' => $attendance->student_id,
+                        'teacher_id' => $attendance->teacher_id,
+                        'date' => $attendance->date,
+                        'status' => $attendance->status
+                    ]);
+
                     $attendance->load(['student:id,name,email', 'subject:id,name']);
                     $created[] = $attendance;
 
@@ -1214,7 +1260,14 @@ class AttendanceController extends Controller
                     }
 
                 } catch (\Exception $e) {
-                    $errors[] = "Ошибка для ученика ID {$data['student_id']}: " . $e->getMessage();
+                    $errorMsg = "Ошибка для ученика ID {$data['student_id']}: " . $e->getMessage();
+                    $errors[] = $errorMsg;
+                    Log::error('Error creating attendance record in saveByLesson', [
+                        'student_id' => $data['student_id'],
+                        'error_message' => $e->getMessage(),
+                        'error_code' => $e->getCode(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
             }
 
@@ -1225,7 +1278,8 @@ class AttendanceController extends Controller
                 'lesson_number' => $request->lesson_number,
                 'date' => $request->date,
                 'created_count' => count($created),
-                'errors_count' => count($errors)
+                'errors_count' => count($errors),
+                'errors_list' => $errors
             ]);
 
             return response()->json([

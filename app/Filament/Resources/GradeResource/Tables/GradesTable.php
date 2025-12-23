@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Filament\Resources\GradeResource\Tables;
+
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Table;
+
+class GradesTable
+{
+
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                TextColumn::make('id')
+                    ->label('№')
+                    ->sortable()
+                    ->icon('heroicon-o-hashtag')
+                    ->toggleable(),
+
+                TextColumn::make('student.name')
+                    ->label('Ученик')
+                    ->sortable()
+                    ->searchable()
+                    ->icon('heroicon-o-user'),
+
+                TextColumn::make('subject.name')
+                    ->label('Предмет')
+                    ->sortable()
+                    ->searchable()
+                    ->icon('heroicon-o-book-open'),
+
+                TextColumn::make('value')
+                    ->label('Оценка')
+                    ->sortable()
+                    ->icon('heroicon-o-clipboard-document-check'),
+
+                TextColumn::make('gradeType.name')
+                    ->label('Тип оценки')
+                    ->sortable()
+                    ->searchable()
+                    ->icon('heroicon-o-document-chart-bar'),
+
+                TextColumn::make('teacher.name')
+                    ->label('Учитель')
+                    ->sortable()
+                    ->searchable()
+                    ->icon('heroicon-o-academic-cap'),
+
+                TextColumn::make('date')
+                    ->label('Дата')
+                    ->date('d.m.Y')
+                    ->sortable()
+                    ->icon('heroicon-o-calendar'),
+
+                IconColumn::make('is_final')
+                    ->label('Итоговая')
+                    ->boolean()
+                    ->sortable()
+                    ->icon(function ($state) {
+                        return $state
+                            ? 'heroicon-o-star'
+                            : null;
+                    })
+                    ->color(function ($state) {
+                        return $state ? 'warning' : null;
+                    }),
+
+                TextColumn::make('created_at')
+                    ->label('Создана')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable()
+                    ->icon('heroicon-o-calendar')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('updated_at')
+                    ->label('Обновлена')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable()
+                    ->icon('heroicon-o-clock')
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->actions([
+                EditAction::make()
+                    ->icon('heroicon-o-pencil'),
+                DeleteAction::make()
+                    ->icon('heroicon-o-trash'),
+            ])
+            ->bulkActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make()
+                        ->icon('heroicon-o-trash'),
+                ]),
+            ])
+            ->defaultSort('date', 'desc')
+            ->paginated([10, 25, 50, 100]);
+    }
+}

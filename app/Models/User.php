@@ -32,6 +32,7 @@ class User extends Authenticatable implements JWTSubject
         'phone',
         'email',
         'password',
+        'role',                  // Роль пользователя: admin, teacher, student, parent
     ];
 
     /**
@@ -45,6 +46,10 @@ class User extends Authenticatable implements JWTSubject
     /**
      * Касты атрибутов
      */
+    protected $appends = [
+        'full_name',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -60,7 +65,23 @@ class User extends Authenticatable implements JWTSubject
      */
     public function getFullNameAttribute(): string
     {
-        return trim("{$this->surname} {$this->name} {$this->second_name}");
+        $parts = array_filter([
+            $this->surname,
+            $this->name,
+            $this->second_name
+        ], function ($value) {
+            return !empty(trim($value));
+        });
+
+        return trim(implode(' ', $parts)) ?: 'Неизвестный пользователь';
+    }
+
+    /**
+     * Роль пользователя (удобный аксессор)
+     */
+    public function getRoleAttribute(): ?string
+    {
+        return $this->attributes['role'] ?? null;
     }
 
     /**
@@ -80,16 +101,133 @@ class User extends Authenticatable implements JWTSubject
             'user_id' => $this->id,
             'email'   => $this->email,
             'name'    => $this->getFullNameAttribute(),
-            // 'role' => $this->role ?? 'guest', // если добавишь роли позже
+            'role'    => $this->role ?? 'unknown',
         ];
     }
 
     /**
      * Отношения
      */
-    public function bookings()
+
+    public function taughtClasses()
     {
-        return $this->hasMany(Booking::class);
+        return $this->hasMany(SchoolClass::class, 'class_teacher_id');
+    }
+
+    public function studentClassRelationships()
+    {
+        return $this->hasMany(StudentClass::class, 'student_id');
+    }
+
+    public function parentStudents()
+    {
+        return $this->hasMany(ParentStudent::class, 'parent_id');
+    }
+
+    public function children()
+    {
+        return $this->hasManyThrough(
+            User::class,
+            ParentStudent::class,
+            'parent_id',
+            'id',
+            'id',
+            'student_id'
+        );
+    }
+
+    public function grades()
+    {
+        return $this->hasMany(Grade::class, 'student_id');
+    }
+
+    public function taughtGrades()
+    {
+        return $this->hasMany(Grade::class, 'teacher_id');
+    }
+
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class, 'student_id');
+    }
+
+    public function taughtAАttendances()
+    {
+        return $this->hasMany(Attendance::class, 'teacher_id');
+    }
+
+    public function homeworks()
+    {
+        return $this->hasMany(Homework::class, 'teacher_id');
+    }
+
+    public function homeworkSubmissions()
+    {
+        return $this->hasMany(HomeworkSubmission::class, 'student_id');
+    }
+
+    public function lessons()
+    {
+        return $this->hasMany(Lesson::class, 'teacher_id');
+    }
+
+    public function schedules()
+    {
+        return $this->hasMany(Schedule::class, 'teacher_id');
+    }
+
+    public function replacementSchedules()
+    {
+        return $this->hasMany(Schedule::class, 'replacement_teacher_id');
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class, 'user_id');
+    }
+
+    public function teacherComments()
+    {
+        return $this->hasMany(TeacherComment::class, 'teacher_id');
+    }
+
+    public function studentClasses()
+    {
+        return $this->belongsToMany(SchoolClass::class, 'student_classes', 'student_id', 'school_class_id')
+                    ->withPivot('academic_year', 'is_active')
+                    ->withTimestamps();
+    }
+
+    public function teacherClasses()
+    {
+        return $this->belongsToMany(SchoolClass::class, 'teacher_classes', 'teacher_id', 'school_class_id')
+                    ->withPivot('academic_year', 'is_active')
+                    ->withTimestamps();
+    }
+
+    public function parentClasses()
+    {
+        return $this->belongsToMany(SchoolClass::class, 'parent_students', 'parent_id', 'school_class_id')
+                    ->withPivot('academic_year', 'is_active')
+                    ->withTimestamps();
+    }
+
+    public function schoolClasses()
+    {
+        return $this->belongsToMany(SchoolClass::class, 'student_classes', 'student_id', 'school_class_id')
+                    ->withPivot('academic_year', 'is_active')
+                    ->withTimestamps();
+    }
+
+    public function subjects()
+    {
+        return $this->belongsToMany(Subject::class, 'teacher_subjects', 'teacher_id', 'subject_id')
+                    ->withTimestamps();
+    }
+
+    public function curriculumPlans()
+    {
+        return $this->hasMany(CurriculumPlan::class, 'teacher_id');
     }
 
     /**
@@ -100,5 +238,13 @@ class User extends Authenticatable implements JWTSubject
         return !empty($this->passport_series) &&
                !empty($this->passport_number) &&
                !empty($this->passport_issued_at);
+    }
+
+    /**
+     * Строковое представление пользователя для Filament
+     */
+    public function __toString(): string
+    {
+        return $this->full_name;
     }
 }

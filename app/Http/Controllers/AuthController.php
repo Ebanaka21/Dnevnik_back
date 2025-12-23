@@ -59,11 +59,12 @@ class AuthController extends Controller
                 'email' => 'required|email|max:255|unique:users,email',
                 'phone' => 'nullable|string|max:20',
                 'password' => 'required|string|min:8|max:255|confirmed',
+                'role' => 'nullable|string|in:student,teacher,parent,admin',
             ]);
 
             if ($validator->fails()) {
                 Log::warning('Validation failed for registration: ' . json_encode($validator->errors()) . ' from IP: ' . $request->ip());
-                return response()->json(['message' => 'Ошибка регистрации', 'errors' => $validator->errors()], 422);
+                return response()->json(['message' => 'Ошибка валидации', 'errors' => $validator->errors()], 422);
             }
 
             $data = $validator->validated();
@@ -93,11 +94,15 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Регистрация не удалась', 'errors' => ['general' => 'Недопустимые символы в имени']], 422);
             }
 
+            // Определяем роль пользователя
+            $roleName = $data['role'] ?? 'student';
+
             $user = User::create([
                 'name' => $name,
                 'email' => $email,
                 'phone' => $phone,
                 'password' => Hash::make($data['password']),
+                'role' => $roleName,
             ]);
 
             Log::info('User registered successfully: ' . $user->email . ' (ID: ' . $user->id . ') from IP: ' . $request->ip());
@@ -124,10 +129,35 @@ class AuthController extends Controller
         try {
             $this->rateLimit($request, 'login');
 
-            $data = $request->validate([
+            // Оптимизированный парсинг input данных (как в register)
+            $inputData = $request->all();
+            if (empty($inputData)) {
+                $inputData = json_decode($request->getContent(), true) ?? [];
+            }
+            if (empty($inputData)) {
+                $inputData = $request->post();
+            }
+            if (empty($inputData)) {
+                $inputData = $request->input();
+            }
+
+            // Проверяем, что данные получены
+            if (empty($inputData)) {
+                Log::warning('No input data received for login from IP: ' . $request->ip());
+                return response()->json(['message' => 'Ошибка входа', 'errors' => ['general' => 'Нет данных для обработки']], 422);
+            }
+
+            $validator = \Illuminate\Support\Facades\Validator::make($inputData, [
                 'email' => 'required|email|max:255',
                 'password' => 'required|string|min:8|max:255',
             ]);
+
+            if ($validator->fails()) {
+                Log::warning('Validation failed for login: ' . json_encode($validator->errors()) . ' from IP: ' . $request->ip());
+                return response()->json(['message' => 'Ошибка валидации', 'errors' => $validator->errors()], 422);
+            }
+
+            $data = $validator->validated();
 
             // Улучшенная санитизация входных данных
             $email = filter_var(trim(strip_tags($data['email'])), FILTER_SANITIZE_EMAIL);
@@ -181,8 +211,19 @@ class AuthController extends Controller
                 true                   // HttpOnly
             );
 
+            // Получаем имя роли
+            $roleName = $user->role ?? 'student';
+
+            // Подготавливаем данные пользователя для ответа
+            $userData = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $roleName,
+            ];
+
             return response()->json([
-                'user' => $user,
+                'user' => $userData,
                 'token' => $tokens['token'],
                 'refresh_token' => $tokens['refresh_token'],
                 'expires_in' => $ttlMinutes * 60, // в секундах
@@ -222,7 +263,10 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Аккаунт заблокирован'], 403);
             }
 
-            // Возвращаем только безопасные данные пользователя
+            // Получаем имя роли
+            $roleName = $user->role ?? 'student';
+
+            // Загружаем дополнительные данные в зависимости от роли
             $responseData = [
                 'id' => $user->id,
                 'name' => htmlspecialchars($user->name, ENT_QUOTES, 'UTF-8'),
@@ -234,7 +278,40 @@ class AuthController extends Controller
                 'email_verified_at' => $user->email_verified_at,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
+                'role' => $roleName, // Возвращаем имя роли как строку
             ];
+
+            // Для учеников добавляем информацию о классах
+            if ($roleName === 'student') {
+                $user->load(['studentClassRelationships.schoolClass:id,name,academic_year', 'studentClasses:id,name,academic_year']);
+                $responseData['studentClasses'] = $user->studentClassRelationships->map(function ($studentClass) {
+                    return [
+                        'id' => $studentClass->id,
+                        'school_class_id' => $studentClass->school_class_id,
+                        'academic_year' => $studentClass->academic_year,
+                        'is_active' => $studentClass->is_active,
+                        'schoolClass' => $studentClass->schoolClass,
+                    ];
+                });
+            }
+
+            // Для родителей добавляем информацию о детях
+            if ($roleName === 'parent') {
+                $user->load('parentStudents.student:id,name,email');
+                $responseData['children'] = $user->parentStudents->map(function ($parentStudent) {
+                    return $parentStudent->student;
+                });
+            }
+
+            // Для учителей добавляем информацию о классах и предметах
+            if ($roleName === 'teacher') {
+                $user->load([
+                    'teacherClasses',
+                    'subjects'
+                ]);
+                $responseData['schoolClasses'] = $user->teacherClasses;
+                $responseData['subjects'] = $user->subjects;
+            }
 
             return response()->json($responseData, 200);
         } catch (\Exception $e) {
@@ -406,11 +483,15 @@ class AuthController extends Controller
 
     protected function generateTokens(User $user)
     {
+        // Получаем имя роли
+        $roleName = $user->role ?? 'unknown';
+
         // Генерация access token с дополнительными claims для безопасности
         $accessToken = JWTAuth::claims([
             'sub' => $user->id,
             'iat' => now()->timestamp,
             'type' => 'access',
+            'role' => $roleName, // Добавляем роль в токен
             'ip' => request()->ip(), // Привязка к IP для дополнительной безопасности
             'user_agent' => substr(request()->userAgent() ?? '', 0, 100), // Ограничение длины
         ])->fromUser($user);
@@ -419,6 +500,7 @@ class AuthController extends Controller
         $refreshToken = JWTAuth::claims([
             'sub' => $user->id,
             'type' => 'refresh',
+            'role' => $roleName, // Добавляем роль в refresh токен
             'iat' => now()->timestamp,
             'exp' => now()->addSeconds((int) env('JWT_REFRESH_TTL', 604800))->timestamp,
             'ip' => request()->ip(), // Привязка к IP

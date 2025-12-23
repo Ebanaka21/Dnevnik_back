@@ -5,6 +5,9 @@ namespace App\Filament\Resources\Users;
 use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
+use App\Filament\Resources\Users\Relations\StudentClassesRelationManager;
+use App\Filament\Resources\Users\Relations\TeacherSubjectsRelationManager;
+use App\Filament\Resources\Users\Relations\TeacherClassesRelationManager;
 use App\Filament\Resources\Users\Schemas\UserForm;
 use App\Filament\Resources\Users\Tables\UsersTable;
 use App\Models\User;
@@ -20,8 +23,6 @@ class UserResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static ?string $recordTitleAttribute = 'user';
-
     public static function form(Schema $schema): Schema
     {
         return UserForm::configure($schema);
@@ -35,7 +36,7 @@ class UserResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            StudentClassesRelationManager::class,
         ];
     }
 

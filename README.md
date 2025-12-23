@@ -21,6 +21,11 @@ Laravel is a web application framework with expressive, elegant syntax. We belie
 
 Laravel is accessible, powerful, and provides tools required for large, robust applications.
 
+## Features
+
+1. **Teacher Comments**: Teachers can leave comments on grades and homework assignments. These comments can be visible to students and parents based on the teacher's settings.
+2. **Curriculum Plans**: Administrators and teachers can manage curriculum plans, including creating, updating, and deleting plans for each class and subject.
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
@@ -57,3 +62,67 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Deployment Instructions
+
+1. **Environment Variables**: Ensure you have the following environment variables set in your `.env` file:
+
+```env
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_CONNECTION=sqlite
+DB_DATABASE=/absolute/path/to/database.sqlite
+
+JWT_SECRET=your_jwt_secret
+```
+
+2. **Install Dependencies**: Run the following command to install the required dependencies:
+
+```bash
+composer install
+npm install
+```
+
+3. **Generate Application Key**: Run the following command to generate the application key:
+
+```bash
+php artisan key:generate
+```
+
+4. **Run Migrations**: Run the following command to run the database migrations:
+
+```bash
+php artisan migrate
+```
+
+5. **Run Seeders**: Run the following command to run the database seeders:
+
+```bash
+php artisan db:seed
+```
+
+6. **Start the Development Server**: Run the following command to start the development server:
+
+```bash
+php artisan serve
+```
+
+7. **Build Frontend Assets**: Run the following command to build the frontend assets:
+
+```bash
+npm run dev
+# or
+npm run build
+```
+
+## Documentation
+
+For more details on the API and features, refer to the following documents:
+
+- [Teacher Comments API Documentation](../TEACHER_COMMENTS_API.md)
+- [Curriculum Plans API Documentation](../CURRICULUM_PLANS_API.md)
+- [Detailed Architecture Analysis](../ДЕТАЛЬНЫЙ_АНАЛИЗ_АРХИТЕКТУРЫ_ЭЛЕКТРОННОГО_ДНЕВНИКА.md)
